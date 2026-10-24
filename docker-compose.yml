@@ -1,0 +1,157 @@
+# IdentityShield lab stack.
+#   ./scripts/init_env.sh          # once: creates .env with random secrets
+#   docker compose up -d --build   # start everything
+#   docker compose exec api python scripts/seed.py
+#
+# Only the browser-facing ports are published (web 5173, keycloak 8080, api 8000, mailpit 8025).
+# Postgres and Redis stay on the internal network.
+
+x-api-env: &api-env
+  APP_ENV: lab
+  DATABASE_URL: postgresql+psycopg://is_app:${IS_APP_DB_PASSWORD}@postgres:5432/identityshield
+  MIGRATION_DATABASE_URL: postgresql+psycopg://identityshield:${POSTGRES_PASSWORD}@postgres:5432/identityshield
+  TEST_DATABASE_URL: postgresql+psycopg://is_app:${IS_APP_DB_PASSWORD}@postgres:5432/identityshield_test
+  TEST_MIGRATION_DATABASE_URL: postgresql+psycopg://identityshield:${POSTGRES_PASSWORD}@postgres:5432/identityshield_test
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+  TEST_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/15
+  KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+  KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+  KC_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
+  KC_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+  API_INTERNAL_URL: http://api:8000
+  PUBLIC_URL: ${PUBLIC_URL:-http://localhost:5173}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  JWT_SECRET: ${JWT_SECRET}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+  INGEST_HMAC_SECRET: ${INGEST_HMAC_SECRET}
+  PLATFORM_API_KEY: ${PLATFORM_API_KEY}
+  LAB_MODE: ${LAB_MODE:-false}
+  LAB_API_KEY: ${LAB_API_KEY}
+  DEMO_PASSWORD: ${DEMO_PASSWORD}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: identityshield
+      POSTGRES_DB: identityshield
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      IS_APP_DB_PASSWORD: ${IS_APP_DB_PASSWORD}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identityshield -d identityshield"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  mailpit:
+    # Catches invite / required-action emails sent by Keycloak (lab only). UI: http://localhost:8025
+    image: axllent/mailpit:v1.21
+    ports:
+      - "8025:8025"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.5
+    command: ["start-dev"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      # Browser-facing issuer; the API reaches Keycloak on the internal network (dynamic backchannel).
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      # LAB ONLY: trust X-Forwarded-For so the simulator can label events with lab IPs.
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: *api-env
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./keycloak:/app/keycloak:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    # Keycloak event poller, scheduled leavers, periodic detections (D05, D12).
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: *api-env
+    command: ["python", "-m", "app.worker"]
+    volumes:
+      - ./keycloak:/app/keycloak:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  simulator:
+    # On-demand: docker compose run --rm simulator stolen_session --i-understand-lab-only
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    profiles: ["tools"]
+    environment:
+      SIM_API_URL: http://api:8000
+      LAB_API_KEY: ${LAB_API_KEY}
+
+volumes:
+  pgdata:
+  redisdata:

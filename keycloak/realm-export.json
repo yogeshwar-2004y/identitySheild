@@ -1,0 +1,156 @@
+{
+  "realm": "acme",
+  "displayName": "Acme Corp (demo tenant)",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "verifyEmail": true,
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 300,
+  "ssoSessionIdleTimeout": 900,
+  "ssoSessionMaxLifespan": 28800,
+  "clientSessionIdleTimeout": 900,
+  "clientSessionMaxLifespan": 28800,
+  "offlineSessionIdleTimeout": 900,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "actionTokenGeneratedByUserLifespan": 86400,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 10,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "passwordPolicy": "length(12) and upperCase(1) and lowerCase(1) and digits(1) and notUsername(undefined)",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "eventsEnabled": true,
+  "eventsExpiration": 2592000,
+  "eventsListeners": [
+    "jboss-logging"
+  ],
+  "enabledEventTypes": [
+    "LOGIN",
+    "LOGIN_ERROR",
+    "LOGOUT",
+    "LOGOUT_ERROR",
+    "CODE_TO_TOKEN",
+    "CODE_TO_TOKEN_ERROR",
+    "REFRESH_TOKEN",
+    "REFRESH_TOKEN_ERROR",
+    "CLIENT_LOGIN",
+    "CLIENT_LOGIN_ERROR",
+    "UPDATE_PASSWORD",
+    "UPDATE_TOTP",
+    "REMOVE_TOTP",
+    "VERIFY_EMAIL",
+    "SEND_VERIFY_EMAIL",
+    "EXECUTE_ACTIONS",
+    "UPDATE_CREDENTIAL",
+    "REMOVE_CREDENTIAL",
+    "USER_DISABLED_BY_PERMANENT_LOCKOUT",
+    "USER_DISABLED_BY_TEMPORARY_LOCKOUT"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true,
+  "smtpServer": {
+    "host": "mailpit",
+    "port": "1025",
+    "from": "no-reply@identityshield.local",
+    "fromDisplayName": "IdentityShield",
+    "ssl": "false",
+    "starttls": "false",
+    "auth": "false"
+  },
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Tenant administrator (HIGH sensitivity)"
+      },
+      {
+        "name": "analyst",
+        "description": "Security analyst: alerts, hunts, sessions (HIGH sensitivity)"
+      },
+      {
+        "name": "hr",
+        "description": "HR: joiner / mover / leaver requests"
+      },
+      {
+        "name": "user",
+        "description": "Standard employee"
+      },
+      {
+        "name": "eng-developer",
+        "description": "Engineering: source and CI access"
+      },
+      {
+        "name": "eng-prod-access",
+        "description": "Engineering: production access (HIGH sensitivity)"
+      },
+      {
+        "name": "finance-viewer",
+        "description": "Finance: read ledgers"
+      },
+      {
+        "name": "finance-approver",
+        "description": "Finance: approve payments (HIGH sensitivity)"
+      },
+      {
+        "name": "sales-crm",
+        "description": "Sales: CRM access"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "identityshield-web",
+      "name": "IdentityShield dashboard (BFF)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": false,
+      "redirectUris": [
+        "${PUBLIC_URL}/api/auth/callback"
+      ],
+      "webOrigins": [
+        "${PUBLIC_URL}"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${PUBLIC_URL}/login",
+        "backchannel.logout.url": "${API_INTERNAL_URL}/auth/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "true",
+        "use.refresh.tokens": "true",
+        "client_credentials.use_refresh_token": "false"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-identityshield-web",
+      "enabled": true,
+      "serviceAccountClientId": "identityshield-web",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users",
+          "view-events",
+          "view-realm"
+        ]
+      }
+    }
+  ]
+}

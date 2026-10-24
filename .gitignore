@@ -1,0 +1,28 @@
+# secrets
+.env
+*.pem
+*.key
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+.venv/
+.mypy_cache/
+.ruff_cache/
+
+# node
+node_modules/
+dist/
+frontend/test-results/
+frontend/playwright-report/
+*.tsbuildinfo
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/
+.tamper_audit.state
