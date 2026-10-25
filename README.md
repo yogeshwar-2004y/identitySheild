@@ -81,19 +81,16 @@ and "every non-public route returns 401 anonymously".
 
 ### Deploy to Render (free tier)
 
-`render.yaml` is a Render Blueprint with three free Docker web services (`identityshield-web`,
-`identityshield-api`, `identityshield-kc`). Postgres and Redis come from free external services,
-because a Render workspace gets only one free Postgres and one free Key Value:
-
-* **Neon** (https://neon.tech): create a project in region *AWS Asia Pacific (Singapore)*, then copy
-  the connection string with **connection pooling turned off** (`postgresql://...neon.tech/neondb?sslmode=require...`).
-* **Upstash** (https://upstash.com): create a Redis database (region ap-southeast-1), copy the
-  `rediss://default:<password>@<host>:6379` URL.
+`render.yaml` is a Render Blueprint for the whole stack: three free Docker web services
+(`identityshield-web`, `identityshield-api`, `identityshield-kc`), a free Postgres and a free Key Value
+(Redis). Files under `deploy/render/` adapt the stack to one managed database and no private network.
+A Render workspace gets only **one** free Postgres and **one** free Key Value: use a workspace where
+they are unused (otherwise see the Neon / Upstash alternative in the header of `render.yaml`).
 
 1. Push this repository to GitHub.
-2. Render dashboard: **New → Blueprint**, connect the repository, keep the `render.yaml` path.
-3. Fill in the prompted values on `identityshield-api`: `RENDER_DATABASE_URL` (Neon), `REDIS_URL`
-   (Upstash) and `DEMO_PASSWORD` (12+ characters with upper-case, lower-case and a digit). **Apply**.
+2. In the Render dashboard: **New → Blueprint**, connect the repository, keep the `render.yaml` path.
+3. When asked for `DEMO_PASSWORD`, enter the password the demo users will get
+   (12+ characters with an upper-case letter, a lower-case letter and a digit). Click **Apply**.
 4. Wait for the three services to go live (first build ~10 min; Keycloak boots slowly on 0.1 CPU).
    On first start the API creates the runtime DB role, migrates, waits for Keycloak and seeds the
    demo tenants by itself (watch the `identityshield-api` logs for `Seed complete`).
@@ -109,8 +106,8 @@ Free-tier behaviour:
 
 * Services sleep after 15 minutes without traffic; the first visit wakes the web service, the API
   and then Keycloak (1–3 minutes). While the API is awake its worker keeps Keycloak awake.
-* Free instance hours (750 h/month) are shared by all services in the workspace. Upstash's free
-  plan has a monthly command quota, so the worker polls Keycloak every 10 s (`WORKER_POLL_SECONDS`).
+* The free Postgres expires after 30 days; free instance hours (750 h/month) are shared by all
+  services in the workspace.
 * No email server: Joiner invite emails fail softly (use "lab demo password" on the Joiner form).
 * `LAB_MODE=true` is kept so the Attack Lab works; the lab endpoints still need the generated
   `LAB_API_KEY`. Set `LAB_MODE=false` on `identityshield-api` to turn it off.
