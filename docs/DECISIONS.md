@@ -107,7 +107,11 @@ roles: `admin`, `analyst`, `eng-prod-access`, `finance-approver`.
   and the API calls Keycloak (and Keycloak calls the back-channel logout endpoint) on public URLs.
   The client IP is the leftmost `X-Forwarded-For` entry, which a caller can spoof on this hosted
   setup; acceptable for a lab demo, not for production (use a private network or a signed header).
-* **512 MB for Keycloak.** Pre-built image (`kc.sh build`, `start --optimized`), heap capped at 50 %
-  of the container, DB pool 8. Measured locally under a 512 MB limit: ~440 MB after seeding.
+* **512 MB for Keycloak.** Render kills the container above 512 MiB (it did, on first boot, with a
+  percentage-based heap). Now: pre-built image (`kc.sh build`, `start --optimized`), `cache=local`,
+  heap 128–200 MB, metaspace 160 MB, code cache 48 MB, C1-only JIT, 16 HTTP threads, DB pool 8.
+  Measured locally at 512 MB / 0.15 CPU: peak 428 MiB through seeding and attack scenarios.
+  Realm creation is slow on such a CPU, so Keycloak calls use `KEYCLOAK_TIMEOUT_SECONDS` (120 on
+  Render, 10 by default) and the first-start seed retries up to 5 times.
 * **Lab mode stays on** so the Attack Lab works online; `/lab/*` still requires `LAB_API_KEY`.
 * `ENCRYPTION_KEY` now accepts URL-safe base64 as well (Render's generated values).

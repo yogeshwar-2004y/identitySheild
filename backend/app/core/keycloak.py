@@ -26,7 +26,10 @@ import jwt
 
 from app.core.config import get_settings
 
-ADMIN_TIMEOUT = httpx.Timeout(10.0)
+
+def _timeout() -> httpx.Timeout:
+    # Slow hosts (Render free: 0.1 CPU) need longer, e.g. for realm creation.
+    return httpx.Timeout(float(get_settings().keycloak_timeout_seconds))
 
 
 class KeycloakError(Exception):
@@ -122,7 +125,7 @@ class TenantKeycloak:
                 f"{self._oidc}/token",
                 data={"grant_type": "client_credentials"},
                 auth=(self.client_id, self.client_secret),
-                timeout=ADMIN_TIMEOUT,
+                timeout=_timeout(),
             )
             _raise_for(resp, "service account token")
             data = resp.json()
@@ -133,7 +136,7 @@ class TenantKeycloak:
     def _req(self, method: str, path: str, what: str, **kw: Any) -> httpx.Response:
         resp = httpx.request(
             method, f"{self._admin}{path}", headers={"Authorization": f"Bearer {self._sa_token()}"},
-            timeout=ADMIN_TIMEOUT, **kw,
+            timeout=_timeout(), **kw,
         )
         _raise_for(resp, what)
         return resp
@@ -150,7 +153,7 @@ class TenantKeycloak:
             rep["credentials"] = [{"type": "password", "value": password, "temporary": False}]
         resp = httpx.post(
             f"{self._admin}/users", json=rep, headers={"Authorization": f"Bearer {self._sa_token()}"},
-            timeout=ADMIN_TIMEOUT,
+            timeout=_timeout(),
         )
         if resp.status_code == 409:  # already exists: idempotent re-run
             existing = self.find_user(username=username)
@@ -207,7 +210,7 @@ class TenantKeycloak:
     def delete_session(self, kc_session_id: str) -> None:
         resp = httpx.delete(
             f"{self._admin}/sessions/{kc_session_id}", headers={"Authorization": f"Bearer {self._sa_token()}"},
-            timeout=ADMIN_TIMEOUT,
+            timeout=_timeout(),
         )
         if resp.status_code != 404:  # already gone is fine
             _raise_for(resp, "delete session")
@@ -236,7 +239,7 @@ class TenantKeycloak:
 
     def _token_call(self, data: dict[str, str], what: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
         resp = httpx.post(f"{self._oidc}/token", data=data, auth=(self.client_id, self.client_secret),
-                          headers=headers or {}, timeout=ADMIN_TIMEOUT)
+                          headers=headers or {}, timeout=_timeout())
         _raise_for(resp, what)
         return dict(resp.json())
 
@@ -250,7 +253,7 @@ class TenantKeycloak:
     def end_session(self, refresh_token: str) -> None:
         # Ends the SSO session server-side; Keycloak then sends back-channel logout to every client.
         resp = httpx.post(f"{self._oidc}/logout", data={"refresh_token": refresh_token},
-                          auth=(self.client_id, self.client_secret), timeout=ADMIN_TIMEOUT)
+                          auth=(self.client_id, self.client_secret), timeout=_timeout())
         if resp.status_code not in (200, 204, 400):  # 400 = session already gone
             _raise_for(resp, "end session")
 
@@ -272,7 +275,7 @@ class TenantKeycloak:
         key = f"{self.realm}"
         cached = TenantKeycloak._jwks_cache.get(key)
         if not cached or time.time() - cached[0] > 300:
-            jwks = httpx.get(f"{self._oidc}/certs", timeout=ADMIN_TIMEOUT).json()
+            jwks = httpx.get(f"{self._oidc}/certs", timeout=_timeout()).json()
             TenantKeycloak._jwks_cache[key] = (time.time(), jwks)
             cached = TenantKeycloak._jwks_cache[key]
         kid = jwt.get_unverified_header(token).get("kid")
@@ -336,21 +339,21 @@ class KeycloakPlatformAdmin:
             f"{self.base}/realms/master/protocol/openid-connect/token",
             data={"grant_type": "password", "client_id": "admin-cli", "username": self.username,
                   "password": self.password},
-            timeout=ADMIN_TIMEOUT,
+            timeout=_timeout(),
         )
         _raise_for(resp, "master admin token")
         return str(resp.json()["access_token"])
 
     def _req(self, method: str, path: str, what: str, token: str, **kw: Any) -> httpx.Response:
         resp = httpx.request(method, f"{self.base}/admin/realms{path}",
-                             headers={"Authorization": f"Bearer {token}"}, timeout=ADMIN_TIMEOUT, **kw)
+                             headers={"Authorization": f"Bearer {token}"}, timeout=_timeout(), **kw)
         _raise_for(resp, what)
         return resp
 
     def realm_exists(self, realm: str) -> bool:
         token = self._token()
         resp = httpx.get(f"{self.base}/admin/realms/{realm}", headers={"Authorization": f"Bearer {token}"},
-                         timeout=ADMIN_TIMEOUT)
+                         timeout=_timeout())
         return resp.status_code == 200
 
     def create_realm(self, rep: dict[str, Any]) -> None:

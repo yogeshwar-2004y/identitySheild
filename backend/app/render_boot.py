@@ -139,7 +139,14 @@ def seed_once() -> None:
         return
     from app.seed import main as seed_main
 
-    seed_main()
+    for attempt in range(1, 6):  # seeding is idempotent; a slow Keycloak may time out once
+        try:
+            seed_main()
+            return
+        except Exception:
+            log.exception("demo seed attempt %d failed", attempt)
+            time.sleep(30)
+    log.error("demo seed gave up; restart the API to try again")
 
 
 def main(argv: list[str]) -> None:
