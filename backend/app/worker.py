@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import signal
+import threading
 import time
 
 from app.db.session import tenant_session
@@ -16,20 +17,20 @@ log = logging.getLogger("worker")
 
 POLL_SECONDS = 2
 PERIODIC_SECONDS = 60
-_running = True
+_stop_event = threading.Event()
 
 
 def _stop(*_: object) -> None:
-    global _running
-    _running = False
+    _stop_event.set()
 
 
-def run() -> None:
-    signal.signal(signal.SIGTERM, _stop)
-    signal.signal(signal.SIGINT, _stop)
+def run(install_signals: bool = True) -> None:
+    if install_signals:
+        signal.signal(signal.SIGTERM, _stop)
+        signal.signal(signal.SIGINT, _stop)
     last_periodic = 0.0
     log.info("worker started")
-    while _running:
+    while not _stop_event.is_set():
         for tid in active_tenant_ids():
             try:
                 res = poll_tenant(tid)
@@ -54,7 +55,31 @@ def run() -> None:
                                 log.info("tenant %s: %d periodic alerts", tid, len(alerts))
                 except Exception:
                     log.exception("periodic tasks failed for %s", tid)
-        time.sleep(POLL_SECONDS)
+        _stop_event.wait(POLL_SECONDS)
+
+
+def start_embedded(seed: bool) -> threading.Thread:
+    """Runs the worker loop in a daemon thread of the API process (single-service hosting)."""
+
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # the 2 s poll would flood hosted logs
+
+    def target() -> None:
+        if seed:
+            from app.render_boot import seed_once
+
+            try:
+                seed_once()
+            except Exception:
+                log.exception("demo seed failed; it is retried on the next restart")
+        run(install_signals=False)
+
+    thread = threading.Thread(target=target, name="embedded-worker", daemon=True)
+    thread.start()
+    return thread
+
+
+def stop_embedded() -> None:
+    _stop_event.set()
 
 
 if __name__ == "__main__":

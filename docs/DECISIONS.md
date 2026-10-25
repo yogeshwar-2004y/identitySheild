@@ -89,3 +89,21 @@ roles: `admin`, `analyst`, `eng-prod-access`, `finance-approver`.
 * Dev-only tooling (Vite dev server, Vitest, Tailwind build) has advisories that need major upgrades;
   they do not ship in the nginx-served production bundle and the Vitest UI server is never started.
 * `gitleaks`: the only hits are in the local, git-ignored `.env`; tracked files are clean.
+
+## D-15 Render deployment (free tier)
+`render.yaml` deploys the stack to Render with only free instances, which forces these changes:
+* **One database.** Render gives one Postgres database and one owner user. The API start script
+  (`deploy/render/api-start.sh`, `app/render_boot.py`) creates the RLS-bound runtime role from the
+  owner URL (name `APP_DB_ROLE`, now also used by migration 0002) and runs migrations as the owner;
+  the API connects as the runtime role, so row-level security still applies. Keycloak uses the same
+  database in schema `keycloak`, created by its connection pool (`new-connection-sql`).
+* **No background workers on the free plan.** `EMBED_WORKER=true` runs the worker loop in a daemon
+  thread of the API process. `SEED_ON_START=true` seeds the demo tenants once (there is no shell).
+* **No private network for free web services.** nginx proxies `/api` to the API's public HTTPS URL,
+  and the API calls Keycloak (and Keycloak calls the back-channel logout endpoint) on public URLs.
+  The client IP is the leftmost `X-Forwarded-For` entry, which a caller can spoof on this hosted
+  setup; acceptable for a lab demo, not for production (use a private network or a signed header).
+* **512 MB for Keycloak.** Pre-built image (`kc.sh build`, `start --optimized`), heap capped at 50 %
+  of the container, DB pool 8. Measured locally under a 512 MB limit: ~440 MB after seeding.
+* **Lab mode stays on** so the Attack Lab works online; `/lab/*` still requires `LAB_API_KEY`.
+* `ENCRYPTION_KEY` now accepts URL-safe base64 as well (Render's generated values).

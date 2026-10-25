@@ -1,0 +1,64 @@
+# Render: serves the SPA and reverse-proxies /api/* to the API's public URL (prefix stripped).
+# Free Render services cannot receive private-network traffic, so the hop goes over HTTPS.
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    server_tokens off;
+    client_max_body_size 1m;
+
+    set $api_upstream https://${API_HOST};
+
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' ${KEYCLOAK_PUBLIC_URL}" always;
+    add_header Strict-Transport-Security "max-age=63072000" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+    location /api/alerts/stream {
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass $api_upstream;
+        proxy_ssl_server_name on;
+        proxy_http_version 1.1;
+        proxy_set_header Host ${API_HOST};
+        proxy_set_header Connection "";
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+    }
+
+    location /api/ {
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass $api_upstream;
+        proxy_ssl_server_name on;
+        proxy_http_version 1.1;
+        proxy_set_header Host ${API_HOST};
+        proxy_set_header Connection "";
+        # Client IP: Render's edge appends the real client; the API takes the leftmost entry.
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        # Free services sleep when idle; the first request waits for the API to wake (~1 min).
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    location / {
+        # The shell is never cached: after logout the back button cannot show stale content.
+        add_header Cache-Control "no-store" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' ${KEYCLOAK_PUBLIC_URL}" always;
+        add_header Strict-Transport-Security "max-age=63072000" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        try_files $uri /index.html;
+    }
+}

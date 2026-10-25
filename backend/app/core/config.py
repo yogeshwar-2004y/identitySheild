@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     absolute_timeout_hours: int = 8
     max_concurrent_sessions: int = 3
 
+    # Hosted single-process deployments (Render free tier): run the background worker inside the
+    # API process and load the demo data on first start.
+    embed_worker: bool = False
+    seed_on_start: bool = False
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+
     rate_limit_auth_per_minute: int = 60
     rate_limit_api_per_minute: int = 600
 

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -39,9 +41,22 @@ PUBLIC_PATHS = {
 }
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    s = get_settings()
+    if s.embed_worker:  # single-service hosting (Render free tier): no separate worker process
+        from app.worker import start_embedded, stop_embedded
+
+        start_embedded(seed=s.seed_on_start)
+        yield
+        stop_embedded()
+    else:
+        yield
+
+
 def create_app() -> FastAPI:
     s = get_settings()
-    app = FastAPI(title="IdentityShield API", version="1.0.0",
+    app = FastAPI(title="IdentityShield API", version="1.0.0", lifespan=lifespan,
                   docs_url="/docs" if s.lab_mode else None, redoc_url=None, openapi_url="/openapi.json")
 
     app.add_middleware(

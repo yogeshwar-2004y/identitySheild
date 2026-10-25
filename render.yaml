@@ -1,0 +1,142 @@
+# Render Blueprint for IdentityShield (free tier).
+# Render dashboard -> New -> Blueprint -> pick this repository -> Apply.
+# See README "Deploy to Render" for the first-start steps and free-tier limits.
+#
+#   identityshield-web   nginx: React dashboard + /api proxy        (public, free web service)
+#   identityshield-api   FastAPI + embedded worker + demo seed       (public, free web service)
+#   identityshield-kc    Keycloak (schema "keycloak" in the same DB) (public, free web service)
+#   identityshield-db    Postgres (free: expires after 30 days)
+#   identityshield-redis Key Value / Redis (free, internal only)
+#
+# The service URLs below assume Render gives each service its name as subdomain. If a name was
+# taken, Render adds a suffix: update the *_URL / *_HOST values to the real URLs and redeploy.
+
+databases:
+  - name: identityshield-db
+    plan: free
+    region: singapore
+    postgresMajorVersion: "16"
+    databaseName: identityshield
+    user: identityshield
+    ipAllowList: []   # internal connections only
+
+services:
+  - type: keyvalue
+    name: identityshield-redis
+    plan: free
+    region: singapore
+    maxmemoryPolicy: noeviction
+    ipAllowList: []   # internal connections only
+
+  - type: web
+    name: identityshield-kc
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./deploy/render/keycloak.Dockerfile
+    dockerContext: .
+    healthCheckPath: /realms/master
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: identityshield-db
+          property: connectionString
+      - key: PORT
+        value: "8080"
+      - key: KC_BOOTSTRAP_ADMIN_USERNAME
+        value: kcadmin
+      - key: KC_BOOTSTRAP_ADMIN_PASSWORD
+        generateValue: true
+      - key: KC_HOSTNAME
+        value: https://identityshield-kc.onrender.com
+      - key: KC_PROXY_HEADERS
+        value: xforwarded
+      - key: KC_HTTP_ENABLED
+        value: "true"
+      - key: KC_DB_POOL_MAX_SIZE
+        value: "8"
+      - key: JAVA_OPTS_KC_HEAP
+        value: "-XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=25"
+
+  - type: web
+    name: identityshield-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    dockerCommand: /app/render-start.sh
+    healthCheckPath: /health/ready
+    envVars:
+      - key: PORT
+        value: "8000"   # the lab router calls the API on 127.0.0.1:8000
+      - key: APP_ENV
+        value: render
+      - key: RENDER_DATABASE_URL
+        fromDatabase:
+          name: identityshield-db
+          property: connectionString
+      - key: APP_DB_ROLE
+        value: is_app
+      - key: IS_APP_DB_PASSWORD
+        generateValue: true
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: identityshield-redis
+          property: connectionString
+      - key: KEYCLOAK_INTERNAL_URL
+        value: https://identityshield-kc.onrender.com
+      - key: KEYCLOAK_PUBLIC_URL
+        value: https://identityshield-kc.onrender.com
+      - key: KC_ADMIN_USERNAME
+        value: kcadmin
+      - key: KC_ADMIN_PASSWORD
+        fromService:
+          type: web
+          name: identityshield-kc
+          envVarKey: KC_BOOTSTRAP_ADMIN_PASSWORD
+      - key: API_INTERNAL_URL   # Keycloak back-channel logout target
+        value: https://identityshield-api.onrender.com
+      - key: PUBLIC_URL
+        value: https://identityshield-web.onrender.com
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: INGEST_HMAC_SECRET
+        generateValue: true
+      - key: PLATFORM_API_KEY
+        generateValue: true
+      - key: LAB_MODE
+        value: "true"
+      - key: LAB_API_KEY
+        generateValue: true
+      - key: DEMO_PASSWORD   # you type it when creating the Blueprint (12+ chars, upper, lower, digit)
+        sync: false
+      - key: EMBED_WORKER
+        value: "true"
+      - key: SEED_ON_START
+        value: "true"
+
+  - type: web
+    name: identityshield-web
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./deploy/render/web.Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: API_HOST
+        value: identityshield-api.onrender.com
+      - key: KEYCLOAK_PUBLIC_URL
+        value: https://identityshield-kc.onrender.com

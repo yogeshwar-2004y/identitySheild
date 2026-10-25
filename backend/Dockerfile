@@ -10,6 +10,10 @@ RUN pip install -r requirements-dev.txt
 
 COPY backend/ /app/
 COPY simulator/ /app/simulator/
+# Realm template, seed script and hosted start script (compose also mounts the first two).
+COPY keycloak/ /app/keycloak/
+COPY scripts/ /app/scripts/
+COPY deploy/render/api-start.sh /app/render-start.sh
 
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser /app
 USER appuser

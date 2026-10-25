@@ -10,7 +10,7 @@ interface RunResult { scenario: string; expected: string; ok: boolean; output: s
 
 export default function Lab() {
   const list = useAsync(() => api<{ scenarios: Scenario[] }>("/lab/scenarios"));
-  const [victim, setVictim] = useState("asha");
+  const [victim, setVictim] = useState("bob");
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<RunResult[]>([]);
   const [err, setErr] = useState<unknown>(null);
@@ -31,6 +31,7 @@ export default function Lab() {
       <PageHeader title="Attack Lab" subtitle="LAB MODE ONLY · runs the simulator scenarios against this local stack" />
       <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
         The simulator only targets localhost / the Docker network and labels its traffic with documentation-range IPs (203.0.113.x = IN, 198.51.100.x = US, …).
+        Victim: any seeded user (bob, sam, …); for ghost_login use <span className="font-mono">dave</span> (already deprovisioned) or run a Leaver first.
       </div>
       <Card title="Scenarios" actions={<Field label=""><input aria-label="Victim username" className={inputCls} value={victim} onChange={(e) => setVictim(e.target.value)} /></Field>}>
         <ErrorBox error={list.error || err} />

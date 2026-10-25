@@ -135,7 +135,9 @@ def decode_access_token(token: str) -> AccessClaims:
 
 
 def _aes() -> AESGCM:
-    key = base64.b64decode(get_settings().encryption_key)
+    raw = get_settings().encryption_key.strip()
+    # Standard or URL-safe base64 (hosting platforms generate either), padding optional.
+    key = base64.urlsafe_b64decode(raw.replace("+", "-").replace("/", "_") + "=" * (-len(raw) % 4))
     if len(key) != 32:
         raise RuntimeError("ENCRYPTION_KEY must be 32 bytes, base64 encoded")
     return AESGCM(key)
