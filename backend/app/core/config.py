@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     seed_on_start: bool = False
     db_pool_size: int = 10
     db_max_overflow: int = 20
+    # Keycloak event poll interval. Hosted Redis plans with a command quota want a longer one.
+    worker_poll_seconds: int = 2
 
     rate_limit_auth_per_minute: int = 60
     rate_limit_api_per_minute: int = 600

@@ -2,32 +2,18 @@
 # Render dashboard -> New -> Blueprint -> pick this repository -> Apply.
 # See README "Deploy to Render" for the first-start steps and free-tier limits.
 #
-#   identityshield-web   nginx: React dashboard + /api proxy        (public, free web service)
-#   identityshield-api   FastAPI + embedded worker + demo seed       (public, free web service)
-#   identityshield-kc    Keycloak (schema "keycloak" in the same DB) (public, free web service)
-#   identityshield-db    Postgres (free: expires after 30 days)
-#   identityshield-redis Key Value / Redis (free, internal only)
+#   identityshield-web   nginx: React dashboard + /api proxy        (free web service)
+#   identityshield-api   FastAPI + embedded worker + demo seed       (free web service)
+#   identityshield-kc    Keycloak (schema "keycloak" in the same DB) (free web service)
+#
+# Postgres and Redis are external free services (a Render workspace gets only one free Postgres
+# and one free Key Value): Neon (Postgres, use the direct, non-pooled URL) and Upstash (Redis,
+# rediss:// URL). You paste both URLs into identityshield-api when the Blueprint asks.
 #
 # The service URLs below assume Render gives each service its name as subdomain. If a name was
 # taken, Render adds a suffix: update the *_URL / *_HOST values to the real URLs and redeploy.
 
-databases:
-  - name: identityshield-db
-    plan: free
-    region: singapore
-    postgresMajorVersion: "16"
-    databaseName: identityshield
-    user: identityshield
-    ipAllowList: []   # internal connections only
-
 services:
-  - type: keyvalue
-    name: identityshield-redis
-    plan: free
-    region: singapore
-    maxmemoryPolicy: noeviction
-    ipAllowList: []   # internal connections only
-
   - type: web
     name: identityshield-kc
     runtime: docker
@@ -37,10 +23,11 @@ services:
     dockerContext: .
     healthCheckPath: /realms/master
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: identityshield-db
-          property: connectionString
+      - key: DATABASE_URL   # same Neon database as the API (entered once, on identityshield-api)
+        fromService:
+          type: web
+          name: identityshield-api
+          envVarKey: RENDER_DATABASE_URL
       - key: PORT
         value: "8080"
       - key: KC_BOOTSTRAP_ADMIN_USERNAME
@@ -72,10 +59,8 @@ services:
         value: "8000"   # the lab router calls the API on 127.0.0.1:8000
       - key: APP_ENV
         value: render
-      - key: RENDER_DATABASE_URL
-        fromDatabase:
-          name: identityshield-db
-          property: connectionString
+      - key: RENDER_DATABASE_URL   # Neon direct connection string (postgresql://...neon.tech/...?sslmode=require)
+        sync: false
       - key: APP_DB_ROLE
         value: is_app
       - key: IS_APP_DB_PASSWORD
@@ -84,11 +69,10 @@ services:
         value: "5"
       - key: DB_MAX_OVERFLOW
         value: "5"
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: identityshield-redis
-          property: connectionString
+      - key: REDIS_URL   # Upstash: rediss://default:<password>@<host>:6379
+        sync: false
+      - key: WORKER_POLL_SECONDS   # fewer Redis commands (Upstash free quota)
+        value: "10"
       - key: KEYCLOAK_INTERNAL_URL
         value: https://identityshield-kc.onrender.com
       - key: KEYCLOAK_PUBLIC_URL

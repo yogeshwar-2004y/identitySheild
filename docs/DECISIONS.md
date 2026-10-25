@@ -92,7 +92,11 @@ roles: `admin`, `analyst`, `eng-prod-access`, `finance-approver`.
 
 ## D-15 Render deployment (free tier)
 `render.yaml` deploys the stack to Render with only free instances, which forces these changes:
-* **One database.** Render gives one Postgres database and one owner user. The API start script
+* **External Postgres and Redis.** A Render workspace gets one free Postgres and one free Key Value,
+  already used by other projects, so the Blueprint takes a Neon Postgres URL and an Upstash Redis
+  URL instead. The worker poll interval is configurable (`WORKER_POLL_SECONDS`, 10 s on Render) to
+  stay inside Upstash's free command quota.
+* **One database.** The hosted Postgres gives one database and one owner user. The API start script
   (`deploy/render/api-start.sh`, `app/render_boot.py`) creates the RLS-bound runtime role from the
   owner URL (name `APP_DB_ROLE`, now also used by migration 0002) and runs migrations as the owner;
   the API connects as the runtime role, so row-level security still applies. Keycloak uses the same

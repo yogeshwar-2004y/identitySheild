@@ -6,6 +6,7 @@ import signal
 import threading
 import time
 
+from app.core.config import get_settings
 from app.db.session import tenant_session
 from app.detection.engine import run_periodic
 from app.events.poller import active_tenant_ids, poll_tenant
@@ -15,7 +16,6 @@ from app.models import Tenant
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s worker: %(message)s")
 log = logging.getLogger("worker")
 
-POLL_SECONDS = 2
 PERIODIC_SECONDS = 60
 _stop_event = threading.Event()
 
@@ -55,7 +55,7 @@ def run(install_signals: bool = True) -> None:
                                 log.info("tenant %s: %d periodic alerts", tid, len(alerts))
                 except Exception:
                     log.exception("periodic tasks failed for %s", tid)
-        _stop_event.wait(POLL_SECONDS)
+        _stop_event.wait(get_settings().worker_poll_seconds)
 
 
 def start_embedded(seed: bool) -> threading.Thread:
