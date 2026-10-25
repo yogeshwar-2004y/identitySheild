@@ -27,3 +27,24 @@ def test_role_name_is_validated(monkeypatch: pytest.MonkeyPatch) -> None:
         app_role()
     monkeypatch.setenv("APP_DB_ROLE", "tenant_rt")
     assert app_role() == "tenant_rt"
+
+
+def test_service_urls_from_render_hosts() -> None:
+    from app.render_boot import service_urls
+
+    env = {"WEB_SERVICE_HOST": "identityshield-web-ci54", "KC_SERVICE_HOST": "identityshield-kc-ab12",
+           "RENDER_EXTERNAL_URL": "https://identityshield-api-x9.onrender.com/"}
+    assert service_urls(env) == {
+        "PUBLIC_URL": "https://identityshield-web-ci54.onrender.com",
+        "KEYCLOAK_PUBLIC_URL": "https://identityshield-kc-ab12.onrender.com",
+        "KEYCLOAK_INTERNAL_URL": "https://identityshield-kc-ab12.onrender.com",
+        "API_INTERNAL_URL": "https://identityshield-api-x9.onrender.com",
+    }
+
+
+def test_render_hosts_override_stale_urls() -> None:
+    from app.render_boot import service_urls
+
+    env = {"WEB_SERVICE_HOST": "identityshield-web-ci54", "PUBLIC_URL": "https://identityshield-web.onrender.com"}
+    assert service_urls(env) == {"PUBLIC_URL": "https://identityshield-web-ci54.onrender.com"}
+    assert service_urls({"PUBLIC_URL": "https://shield.example.com"}) == {}

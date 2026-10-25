@@ -12,8 +12,8 @@
 # `databases` and keyvalue entries and set RENDER_DATABASE_URL (e.g. Neon, direct URL) and
 # REDIS_URL (e.g. Upstash rediss://, then also WORKER_POLL_SECONDS=10) on identityshield-api.
 #
-# The service URLs below assume Render gives each service its name as subdomain. If a name was
-# taken, Render adds a suffix: update the *_URL / *_HOST values to the real URLs and redeploy.
+# Services find each other through `fromService: host` (Render adds a random suffix such as
+# -ci54 when a name is taken), so no URL is hard-coded.
 
 databases:
   - name: identityshield-db
@@ -51,8 +51,6 @@ services:
         value: kcadmin
       - key: KC_BOOTSTRAP_ADMIN_PASSWORD
         generateValue: true
-      - key: KC_HOSTNAME
-        value: https://identityshield-kc.onrender.com
       - key: KC_PROXY_HEADERS
         value: xforwarded
       - key: KC_HTTP_ENABLED
@@ -93,10 +91,11 @@ services:
           type: keyvalue
           name: identityshield-redis
           property: connectionString
-      - key: KEYCLOAK_INTERNAL_URL
-        value: https://identityshield-kc.onrender.com
-      - key: KEYCLOAK_PUBLIC_URL
-        value: https://identityshield-kc.onrender.com
+      - key: KC_SERVICE_HOST   # -> KEYCLOAK_PUBLIC_URL / KEYCLOAK_INTERNAL_URL
+        fromService:
+          type: web
+          name: identityshield-kc
+          property: host
       - key: KC_ADMIN_USERNAME
         value: kcadmin
       - key: KC_ADMIN_PASSWORD
@@ -104,10 +103,11 @@ services:
           type: web
           name: identityshield-kc
           envVarKey: KC_BOOTSTRAP_ADMIN_PASSWORD
-      - key: API_INTERNAL_URL   # Keycloak back-channel logout target
-        value: https://identityshield-api.onrender.com
-      - key: PUBLIC_URL
-        value: https://identityshield-web.onrender.com
+      - key: WEB_SERVICE_HOST   # -> PUBLIC_URL (API_INTERNAL_URL = this service's RENDER_EXTERNAL_URL)
+        fromService:
+          type: web
+          name: identityshield-web
+          property: host
       - key: COOKIE_SECURE
         value: "true"
       - key: JWT_SECRET
@@ -140,7 +140,13 @@ services:
     envVars:
       - key: PORT
         value: "8080"
-      - key: API_HOST
-        value: identityshield-api.onrender.com
-      - key: KEYCLOAK_PUBLIC_URL
-        value: https://identityshield-kc.onrender.com
+      - key: API_SERVICE_HOST
+        fromService:
+          type: web
+          name: identityshield-api
+          property: host
+      - key: KC_SERVICE_HOST
+        fromService:
+          type: web
+          name: identityshield-kc
+          property: host

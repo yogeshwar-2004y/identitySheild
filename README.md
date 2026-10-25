@@ -96,11 +96,9 @@ they are unused (otherwise see the Neon / Upstash alternative in the header of `
    demo tenants by itself (watch the `identityshield-api` logs for `Seed complete`).
 5. Open `https://identityshield-web.onrender.com`, organisation `acme`, user `alice`.
 
-If Render added a suffix to a service URL (name already taken), set the real URLs in the
-`identityshield-api` env vars (`PUBLIC_URL`, `KEYCLOAK_PUBLIC_URL`, `KEYCLOAK_INTERNAL_URL`,
-`API_INTERNAL_URL`), `identityshield-kc` (`KC_HOSTNAME`) and `identityshield-web` (`API_HOST`,
-`KEYCLOAK_PUBLIC_URL`), then redeploy. Tenant realms created before the change keep the old
-redirect URIs: fix them in the Keycloak admin console (client `identityshield-web`).
+Services find each other through the Blueprint's `fromService: host` references, so the
+random suffix Render adds to a taken name (e.g. `identityshield-web-ci54.onrender.com`) needs no
+manual change. Use the web service's real URL from the dashboard.
 
 Free-tier behaviour:
 

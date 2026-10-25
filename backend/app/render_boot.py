@@ -44,12 +44,37 @@ def derive_urls(owner_url: str, role: str, role_password: str) -> dict[str, str]
     return {"MIGRATION_DATABASE_URL": _sqlalchemy(owner_url), "DATABASE_URL": _sqlalchemy(runtime)}
 
 
+def public_url(host: str) -> str:
+    """Render service host (slug like `identityshield-api-ci54`) -> https://<slug>.onrender.com."""
+    host = host.strip().rstrip("/")
+    if host.startswith(("http://", "https://")):
+        return host
+    return f"https://{host if '.' in host else host + '.onrender.com'}"
+
+
+def service_urls(env: dict[str, str]) -> dict[str, str]:
+    """Browser-facing URLs of the sibling services. Render adds a random suffix to a service name
+    that is already taken, so they come from the Blueprint's `fromService: host` references (and
+    this service's own RENDER_EXTERNAL_URL) instead of being hard-coded. They take priority over
+    values left behind by an older Blueprint; drop the reference to set a URL by hand."""
+    derived: dict[str, str] = {}
+    if env.get("WEB_SERVICE_HOST"):
+        derived["PUBLIC_URL"] = public_url(env["WEB_SERVICE_HOST"])
+    if env.get("KC_SERVICE_HOST"):
+        kc = public_url(env["KC_SERVICE_HOST"])
+        derived["KEYCLOAK_PUBLIC_URL"] = kc
+        derived["KEYCLOAK_INTERNAL_URL"] = kc
+    if env.get("RENDER_EXTERNAL_URL"):
+        derived["API_INTERNAL_URL"] = env["RENDER_EXTERNAL_URL"].rstrip("/")  # back-channel logout target
+    return derived
+
+
 def _env_urls() -> dict[str, str]:
     owner = os.environ.get("RENDER_DATABASE_URL")
     password = os.environ.get("IS_APP_DB_PASSWORD")
     if not owner or not password:
         raise SystemExit("RENDER_DATABASE_URL and IS_APP_DB_PASSWORD are required")
-    return derive_urls(owner, app_role(), password)
+    return {**derive_urls(owner, app_role(), password), **service_urls(dict(os.environ))}
 
 
 def ensure_runtime_role() -> None:
@@ -121,8 +146,11 @@ def main(argv: list[str]) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cmd = argv[1] if len(argv) > 1 else ""
     if cmd == "env":
-        for key, value in _env_urls().items():
+        urls = _env_urls()
+        for key, value in urls.items():
             print(f"export {key}={shlex.quote(value)}")
+        for key in ("PUBLIC_URL", "KEYCLOAK_PUBLIC_URL", "API_INTERNAL_URL"):
+            print(f"echo {shlex.quote(f'{key}=' + urls.get(key, os.environ.get(key, '(unset)')))} >&2")
     elif cmd == "db":
         ensure_runtime_role()
     else:

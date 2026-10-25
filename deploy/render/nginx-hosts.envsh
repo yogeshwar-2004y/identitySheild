@@ -1,0 +1,12 @@
+#!/bin/sh
+# Sourced by the nginx entrypoint before the template step: turns Render service hosts
+# (`fromService: host`, e.g. identityshield-api-ci54) into the values the template needs.
+# They take priority over values left behind by an older Blueprint.
+to_host() { case "$1" in *.*) echo "$1" ;; *) echo "$1.onrender.com" ;; esac; }
+if [ -n "${API_SERVICE_HOST:-}" ]; then
+  API_HOST=$(to_host "$API_SERVICE_HOST"); export API_HOST
+fi
+if [ -n "${KC_SERVICE_HOST:-}" ]; then
+  KEYCLOAK_PUBLIC_URL="https://$(to_host "$KC_SERVICE_HOST")"; export KEYCLOAK_PUBLIC_URL
+fi
+echo "render hosts: API_HOST=${API_HOST:-} KEYCLOAK_PUBLIC_URL=${KEYCLOAK_PUBLIC_URL:-}"

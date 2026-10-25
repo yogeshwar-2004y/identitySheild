@@ -26,5 +26,8 @@ for p in "${kv[@]}"; do [[ "$p" == sslmode=* ]] && jdbc_params="?${p}"; done
 export KC_DB_URL="jdbc:postgresql://${host}:${port}/${db}${jdbc_params}"
 export KC_DB_SCHEMA="${KC_DB_SCHEMA:-keycloak}"
 export KC_HTTP_PORT="${PORT:-8080}"
+# Browser-facing URL: Render's own external URL (set KC_HOSTNAME_OVERRIDE for a custom domain).
+export KC_HOSTNAME="${KC_HOSTNAME_OVERRIDE:-${RENDER_EXTERNAL_URL:-${KC_HOSTNAME:-}}}"
+echo "Keycloak hostname: ${KC_HOSTNAME}"
 
 exec /opt/keycloak/bin/kc.sh start --optimized "$@"
