@@ -96,9 +96,17 @@ def ensure_runtime_role() -> None:
         raise SystemExit("database unreachable")
     with conn:
         exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)).fetchone()
-        verb = "ALTER" if exists else "CREATE"
-        conn.execute(sql.SQL(verb + " ROLE {} WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD {}").format(
-            sql.Identifier(role), sql.Literal(password)))
+        if exists:
+            # A non-superuser owner (managed Postgres) may not touch SUPERUSER / BYPASSRLS on ALTER:
+            # only refresh login + password, then verify the safety attributes instead.
+            conn.execute(sql.SQL("ALTER ROLE {} WITH LOGIN PASSWORD {}").format(
+                sql.Identifier(role), sql.Literal(password)))
+        else:
+            conn.execute(sql.SQL("CREATE ROLE {} WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD {}").format(
+                sql.Identifier(role), sql.Literal(password)))
+        unsafe = conn.execute("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = %s", (role,)).fetchone()
+        if unsafe and unsafe[0]:
+            raise SystemExit(f"runtime role {role} is SUPERUSER or BYPASSRLS: row-level security would not apply")
         db = conn.execute("SELECT current_database()").fetchone()[0]  # type: ignore[index]
         conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(db), sql.Identifier(role)))
         conn.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role)))
